@@ -7,6 +7,7 @@ public class Main {
     public static void
     main (String[] args) {    
         // Disable MongoDB logger
+	System.out.println();
         Logger
             .getLogger("org.mongodb.driver")
             .setLevel(Level.OFF);

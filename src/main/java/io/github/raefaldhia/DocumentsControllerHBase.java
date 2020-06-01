@@ -16,14 +16,21 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mongodb.client.model.Filters;
 
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
 import io.github.raefaldhia.dao.Database;
+import io.github.raefaldhia.database.HBase.HBaseConnection;
 
-@WebServlet("/documents/*")
-public class DocumentsController extends HttpServlet {
-    private static final long 
+@WebServlet("/documents-hbase/*")
+public class DocumentsControllerHBase extends HttpServlet {
+    private static final long
     serialVersionUID = 1L;
 
     @Override
@@ -38,6 +45,60 @@ public class DocumentsController extends HttpServlet {
                    .equals("/")) {
             JsonArray
             documents = new JsonArray();
+	    HBaseConnection.Create((connection) -> {
+                connection.getTable(TableName.valueOf("documents"), (table) -> {
+		    Scan
+                    scan = new Scan();
+		    scan.addFamily("information".getBytes());
+		    ResultScanner
+		    scanner = table.getScanner(scan);
+		    for (Result
+			 result = scanner.next();
+			 result != null;
+			 result = scanner.next()) {
+			JsonObject
+			document = new JsonObject();
+			final byte[]
+			    documentId = result.getRow();
+			document.addProperty("id",
+					     Bytes.toString(result.getRow()));
+			document.addProperty("author",
+					     Bytes.toString(result.getValue("informationn".getBytes(),
+									    "author".getBytes())));
+			document.addProperty("name",
+					     Bytes.toString(result.getValue("informationn".getBytes(),
+									    "name".getBytes())));
+			document.addProperty("year",
+					     Bytes.toInt(result.getValue("informationn".getBytes(),
+							                 "year".getBytes())));
+			connection.getTable(TableName.valueOf("words"), (wordsTable) -> {
+			    JsonArray
+			    words = new JsonArray();
+			    Scan
+			    wordsScan = new Scan();
+			    wordsScan.addColumn("frequency".getBytes(), documentId);
+			    ResultScanner
+                            wordsScanner = wordsTable.getScanner(wordsScan);
+			    for (Result
+				 wordResult = wordsScanner.next();
+				 wordResult != null;
+				 wordResult = wordsScanner.next()) {
+				JsonObject
+				word = new JsonObject();
+				word.addProperty("word",
+						 Bytes.toString(wordResult.getRow()));
+				word.addProperty("frequency",
+						 Bytes.toInt(wordResult.getValue("frequency".getBytes(), documentId)));
+				words.add(word);
+			    }
+			    document.add("words", words);
+			    
+			});
+			documents.add(document);
+		    }
+                    scanner.close();
+		});
+	    });
             Database.GetInstance()
                     .getDatabase((db) -> {
                         for (Document
@@ -91,29 +152,36 @@ public class DocumentsController extends HttpServlet {
             request.getContentType()
                    .equals("application/json")) {
             final JsonElement
-            body = parseJson(request);
-            Database.GetInstance()
-                    .getDatabase((db) -> {
-                        final ObjectId
-                        documentId = new ObjectId();
-                        db.getCollection("documents")
-                          .insertOne(new Document("_id", documentId).append("author", 
-                                                                            body.getAsJsonObject().get("author").getAsString())
-                                                                    .append("name", 
-                                                                            body.getAsJsonObject().get("name").getAsString())
-                                                                    .append("year",
-                                                                            body.getAsJsonObject().get("year").getAsInt()));
-                        for (JsonElement element : body.getAsJsonObject()
-                                                       .get("words").getAsJsonArray()) {
-                            db.getCollection("words")
-                              .insertOne(new Document().append("word",
-                                                               element.getAsJsonObject().get("word").getAsString())
-                                                       .append("frequency",
-                                                               element.getAsJsonObject().get("frequency").getAsInt())
-                                                       .append("document",
-                                                               documentId));                            
-                        }
-                    });
+	    body = parseJson(request);
+	    final String
+            documentId = new ObjectId().toString();
+	    HBaseConnection.Create((connection) -> {
+                connection.getTable(TableName.valueOf("documents"), (table) -> {
+                    Put
+		    put = new Put(Bytes.toBytes(documentId));
+		    put.addColumn(Bytes.toBytes("information"),
+				  Bytes.toBytes("author"),
+				  Bytes.toBytes(body.getAsJsonObject().get("author").getAsString()));
+		    put.addColumn(Bytes.toBytes("information"),
+				  Bytes.toBytes("name"),
+				  Bytes.toBytes(body.getAsJsonObject().get("name").getAsString()));
+		    put.addColumn(Bytes.toBytes("information"),
+				  Bytes.toBytes("year"),
+				  Bytes.toBytes(body.getAsJsonObject().get("year").getAsInt()));
+		});
+		connection.getTable(TableName.valueOf("words"), (table) -> {
+                    for (JsonElement
+			 element : body.getAsJsonObject()
+			               .get("words")
+			               .getAsJsonArray()) {
+			Put
+		        put = new Put(Bytes.toBytes(element.getAsJsonObject().get("word").getAsString()));
+			put.addColumn(Bytes.toBytes("frequency"),
+				      Bytes.toBytes(documentId),
+				      Bytes.toBytes(element.getAsJsonObject().get("frequency").getAsInt()));
+		    }
+		});
+	    });
             return;
         }
         response.sendError(HttpServletResponse.SC_BAD_REQUEST);

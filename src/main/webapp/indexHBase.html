@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>tugas-besar</title>
+    </head>
+    <body>
+        <label for="author">Author:</label><br>
+        <input type="text" id="author" name="author"><br>
+        <label for="name">Name:</label><br>
+        <input type="text" id="name" name="name"><br>
+        <label for="year">Year:</label><br>
+        <input type="number" id="year" name="year"><br>
+        <label for="words">Words:</label><br>
+        <input type="text" id="words" name="words"><br>
+        <button type="button" onclick="insertDocument()">Add</button>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+        <table id="result">
+            <thead>
+                <tr>
+                    <th>Author</th>
+                    <th>Name</th>
+                    <th>Year</th>
+                    <th>Words</th>
+                </tr>    
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <script>
+            function insertDocument() {
+                axios.post('http://localhost:8080/site/documents-hbase/',
+                           {'author': document.getElementById('author').value,
+                            'name'  : document.getElementById('name').value,
+                            'year'  : document.getElementById('year').value,
+                            'words' : JSON.parse(document.getElementById('words').value)},
+                           {headers: {'Content-Type': 'application/json'}})
+                     .then(function (response) {
+                         console.log(response)
+                     })
+                     .catch(function (error) {
+                         console.error(error)
+                     })
+            }
+            function getDocuments() {
+                axios.get('http://localhost:8080/site/documents-hbase/')
+                     .then(function (response) {
+                         const 
+                         table = document.getElementById("result")
+                         response.data.forEach(document => {
+                             const
+                             row = table.insertRow()
+                             let
+                             cell = null
+                             cell = row.insertCell()
+                             cell.innerHTML = document['author']
+                             cell = row.insertCell()
+                             cell.innerHTML = document['name']
+                             cell = row.insertCell()
+                             cell.innerHTML = document['year']                      
+                             cell = row.insertCell()
+                             cell.innerHTML = JSON.stringify(document['words'])
+                         });
+                     })
+                     .catch(function (error) {
+                         console.error(error)
+                     })
+            }
+            getDocuments()
+        </script>
+    </body>
+</html>
