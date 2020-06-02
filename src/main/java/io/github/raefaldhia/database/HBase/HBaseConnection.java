@@ -5,6 +5,7 @@ import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
 import org.apache.hadoop.hbase.client.ConnectionFactory;
 import org.apache.hadoop.hbase.client.Table;
 
@@ -24,6 +25,9 @@ public class HBaseConnection {
         void execute(final Table table) throws IOException;
     }
 
+    public Admin getAdmin() throws IOException {
+	return rawInstance.getAdmin();
+    }
     public void getTable(TableName tableName, getTableCallback callback) throws IOException {
         final Table
         table = rawInstance.getTable(tableName);

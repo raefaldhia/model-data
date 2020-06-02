@@ -1,5 +1,8 @@
 package io.github.raefaldhia;
 
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.ColumnFamilyDescriptorBuilder;
+import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -7,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import io.github.raefaldhia.dao.Database;
+import io.github.raefaldhia.database.HBase.HBaseConnection;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.Mockito.when;
@@ -26,26 +30,24 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-public class DocumentsControllerTest {
-   @Mock
-   HttpServletRequest request;
+public class DocumentsControllerHBaseTest {
+    @Mock
+    HttpServletRequest request;
 
-   @Mock
-   HttpServletResponse response;
+    @Mock
+    HttpServletResponse response;
 
-   @Before
-   public void setup() {
-       MockitoAnnotations.initMocks(this);
-   }
+    @Before
+    public void setup() {
+        MockitoAnnotations.initMocks(this);
+    }
 
     @Ignore
     @Test
     public void 
     insert() throws ServletException,
                     IOException {
-        Database.GetInstance()
-                .clear();
-
+	this.clearTable();
         JsonObject
         document = new JsonObject();
         document.addProperty("author", "Возера Радасці");
@@ -73,8 +75,8 @@ public class DocumentsControllerTest {
         final Gson
         gson = new Gson();
 
-        DocumentsController 
-        documentsController = new DocumentsController();
+        DocumentsControllerHBase
+        documentsController = new DocumentsControllerHBase();
 
         when(request.getPathInfo())
                     .thenReturn("/");
@@ -95,14 +97,15 @@ public class DocumentsControllerTest {
         documentsController
             .doPost(request, response);
 
-        documentsController = new DocumentsController();
+        documentsController = new DocumentsControllerHBase();
 
         when(request.getPathInfo())
                     .thenReturn("/");
         
-        responseStringWriter = new StringWriter();
+	responseStringWriter = new StringWriter();
 
-        when(response.getWriter()).thenReturn(new PrintWriter(responseStringWriter));
+	when(response.getWriter()).thenReturn(new PrintWriter(responseStringWriter));
+
         documentsController.doGet(request, response);
 
         JsonArray
@@ -125,4 +128,33 @@ public class DocumentsControllerTest {
                               .get("year")
                               .getAsInt());
    }
+
+    void  clearTable() throws IOException {
+	HBaseConnection.Create((connection) -> {
+            if (connection.getAdmin()
+		          .isTableAvailable(TableName.valueOf("documents"))) {
+		connection.getAdmin()
+		          .disableTable(TableName.valueOf("documents"));
+		connection.getAdmin()
+		          .deleteTable(TableName.valueOf("documents"));
+	    }
+	    connection.getAdmin()
+		      .createTable(TableDescriptorBuilder.newBuilder(TableName.valueOf("documents"))
+				                         .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder("information".getBytes())
+									                               .build())
+           			                         .build());
+            if (connection.getAdmin()
+		          .isTableAvailable(TableName.valueOf("words"))) {
+		connection.getAdmin()
+		          .disableTable(TableName.valueOf("words"));
+		connection.getAdmin()
+		          .deleteTable(TableName.valueOf("words"));
+	    }
+	    connection.getAdmin()
+		      .createTable(TableDescriptorBuilder.newBuilder(TableName.valueOf("words"))
+				                         .setColumnFamily(ColumnFamilyDescriptorBuilder.newBuilder("frequency".getBytes())
+									                               .build())
+				                         .build());
+        });	    
+    }
 }

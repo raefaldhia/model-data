@@ -16,11 +16,14 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mongodb.client.model.Filters;
 
+import org.apache.hadoop.hbase.CompareOperator;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -50,6 +53,18 @@ public class DocumentsControllerHBase extends HttpServlet {
 		    Scan
                     scan = new Scan();
 		    scan.addFamily("information".getBytes());
+		    FilterList
+		    filter = new FilterList(FilterList.Operator.MUST_PASS_ALL);
+		    if (request.getParameter("author") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "author".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("author"))));
+		    }
+   		    if (request.getParameter("name") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "name".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("name"))));
+		    }
+		    if (request.getParameter("year") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "year".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("year"))));
+		    }
+                    scan.setFilter(filter);
 		    ResultScanner
 		    scanner = table.getScanner(scan);
 		    for (Result
@@ -59,17 +74,17 @@ public class DocumentsControllerHBase extends HttpServlet {
 			JsonObject
 			document = new JsonObject();
 			final byte[]
-			    documentId = result.getRow();
+		        documentId = result.getRow();
 			document.addProperty("id",
 					     Bytes.toString(result.getRow()));
 			document.addProperty("author",
-					     Bytes.toString(result.getValue("informationn".getBytes(),
+					     Bytes.toString(result.getValue("information".getBytes(),
 									    "author".getBytes())));
 			document.addProperty("name",
-					     Bytes.toString(result.getValue("informationn".getBytes(),
+					     Bytes.toString(result.getValue("information".getBytes(),
 									    "name".getBytes())));
 			document.addProperty("year",
-					     Bytes.toInt(result.getValue("informationn".getBytes(),
+					     Bytes.toInt(result.getValue("information".getBytes(),
 							                 "year".getBytes())));
 			connection.getTable(TableName.valueOf("words"), (wordsTable) -> {
 			    JsonArray
@@ -92,49 +107,16 @@ public class DocumentsControllerHBase extends HttpServlet {
 				words.add(word);
 			    }
 			    document.add("words", words);
-			    
 			});
 			documents.add(document);
 		    }
                     scanner.close();
 		});
 	    });
-            Database.GetInstance()
-                    .getDatabase((db) -> {
-                        for (Document
-                             bsonDocument : db.getCollection("documents")
-                                              .find()) {
-                            JsonObject 
-                            document = new JsonObject();
-                            document.addProperty("author",
-                                                 bsonDocument.getString("author"));
-                            document.addProperty("name",
-                                                 bsonDocument.getString("name"));
-                            document.addProperty("year",
-                                                 bsonDocument.getInteger("year"));
-                            Database.GetInstance()
-                                    .getDatabase((db2) -> {
-                                        JsonArray
-                                        words = new JsonArray();
-                                        for (Document bsonWord : db2.getCollection("words")
-                                                                    .find(Filters.eq("document", 
-                                                                                     bsonDocument.getObjectId("_id")))) {
-                                            JsonObject
-                                            word = new JsonObject();
-                                            word.addProperty("word", 
-                                                             bsonWord.getString("word"));
-                                            word.addProperty("frequency",
-                                                             bsonWord.getInteger("frequency"));
-                                            words.add(word);
-                                        }
-                                        document.add("words", words);
-                                    });
-                            documents.add(document);
-                        }
-                    });
             sendAsJson(response, (new Gson().toJson(documents)));
             return;
         }
+	
         response.sendError(HttpServletResponse.SC_BAD_REQUEST);
         return;
     }
@@ -168,6 +150,7 @@ public class DocumentsControllerHBase extends HttpServlet {
 		    put.addColumn(Bytes.toBytes("information"),
 				  Bytes.toBytes("year"),
 				  Bytes.toBytes(body.getAsJsonObject().get("year").getAsInt()));
+		    table.put(put);
 		});
 		connection.getTable(TableName.valueOf("words"), (table) -> {
                     for (JsonElement
@@ -179,6 +162,7 @@ public class DocumentsControllerHBase extends HttpServlet {
 			put.addColumn(Bytes.toBytes("frequency"),
 				      Bytes.toBytes(documentId),
 				      Bytes.toBytes(element.getAsJsonObject().get("frequency").getAsInt()));
+			table.put(put);
 		    }
 		});
 	    });
