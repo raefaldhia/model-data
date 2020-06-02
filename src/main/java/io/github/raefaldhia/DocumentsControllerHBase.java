@@ -2,6 +2,9 @@ package io.github.raefaldhia;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -22,14 +25,14 @@ import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.filter.BinaryComparator;
 import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.QualifierFilter;
+import org.apache.hadoop.hbase.filter.RowFilter;
 import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.bson.Document;
 import org.bson.types.ObjectId;
-
-import io.github.raefaldhia.dao.Database;
-import io.github.raefaldhia.database.HBase.HBaseConnection;
 
 @WebServlet("/documents-hbase/*")
 public class DocumentsControllerHBase extends HttpServlet {
@@ -38,12 +41,12 @@ public class DocumentsControllerHBase extends HttpServlet {
 
     @Override
     protected void 
-    doGet(HttpServletRequest
+    doGet(final HttpServletRequest
           request,
           HttpServletResponse
           response) throws ServletException,
                            IOException {
-        if (request.getPathInfo() == null || 
+        /*        if (request.getPathInfo() == null || 
             request.getPathInfo()
                    .equals("/")) {
             JsonArray
@@ -62,7 +65,7 @@ public class DocumentsControllerHBase extends HttpServlet {
 			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "name".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("name"))));
 		    }
 		    if (request.getParameter("year") != null) {
-			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "year".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("year"))));
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "year".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(Integer.parseInt(request.getParameter("year")))));
 		    }
                     scan.setFilter(filter);
 		    ResultScanner
@@ -90,8 +93,19 @@ public class DocumentsControllerHBase extends HttpServlet {
 			    JsonArray
 			    words = new JsonArray();
 			    Scan
-			    wordsScan = new Scan();
+                            wordsScan = new Scan();
+	    		    FilterList
+                            wordsFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE);
+                            if (request.getParameter("words") != null) {
+				for (String
+				     wordString : request.getParameter("words")
+					                 .split(" ")) {
+				    wordsFilter.addFilter(new RowFilter(CompareOperator.EQUAL,
+									new BinaryComparator(wordString.getBytes())));
+				}
+			    }
 			    wordsScan.addColumn("frequency".getBytes(), documentId);
+                            wordsScan.setFilter(wordsFilter);
 			    ResultScanner
                             wordsScanner = wordsTable.getScanner(wordsScan);
 			    for (Result
@@ -115,14 +129,128 @@ public class DocumentsControllerHBase extends HttpServlet {
 	    });
             sendAsJson(response, (new Gson().toJson(documents)));
             return;
+            }*/
+        if (request.getPathInfo() == null || 
+            request.getPathInfo()
+                   .equals("/")) {
+            JsonArray
+            documents = new JsonArray();
+	    HBaseConnection.Create((connection) -> {
+                final HashMap<String, Integer>
+                documentsFilter = new HashMap<String, Integer>();
+                connection.getTable(TableName.valueOf("documents"), (table) -> {
+		    FilterList
+		    filter = new FilterList(FilterList.Operator.MUST_PASS_ALL);
+		    if (request.getParameter("author") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "author".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("author"))));
+		    }
+   		    if (request.getParameter("name") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "name".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(request.getParameter("name"))));
+		    }
+		    if (request.getParameter("year") != null) {
+			filter.addFilter(new SingleColumnValueFilter("information".getBytes(), "year".getBytes(), CompareOperator.EQUAL, Bytes.toBytes(Integer.parseInt(request.getParameter("year")))));
+		    }
+                    if (filter.size() > 0) {
+                        Scan
+                        scan = new Scan();
+                        scan.addFamily("information".getBytes());
+                        scan.setFilter(filter);
+                        ResultScanner
+                        scanner = table.getScanner(scan);
+                        for (Result
+                             result = scanner.next();
+                             result != null;
+                             result = scanner.next()) {
+                            documentsFilter.put(Bytes.toString(result.getRow()), 0);
+                        }
+                        scanner.close();
+                    }
+		});
+                connection.getTable(TableName.valueOf("words"), (wordsTable) -> {
+                    Scan
+                    wordsScan = new Scan();
+                    FilterList
+                    wordsFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE);
+                    if (request.getParameter("words") != null) {
+                        for (String
+			     word : request.getParameter("words")
+                                           .split(" ")) {
+                            wordsFilter.addFilter(new RowFilter(CompareOperator.EQUAL,
+                                                                new BinaryComparator(word.getBytes())));
+                        }
+                    }
+                    FilterList
+                    documentFilter = new FilterList(FilterList.Operator.MUST_PASS_ONE);
+                    for (String
+                         document : documentsFilter.keySet()) {
+                        documentFilter.addFilter(new QualifierFilter(CompareOperator.EQUAL, new BinaryComparator(document.getBytes())));
+                    }
+                    wordsScan.setFilter(new FilterList(wordsFilter, documentFilter));
+                    ResultScanner
+                    wordsScanner = wordsTable.getScanner(wordsScan);
+                    boolean
+                    prevOptimization = documentsFilter.size() > 0;
+                    for (Result
+                         wordResult = wordsScanner.next();
+                         wordResult != null;
+                         wordResult = wordsScanner.next()) {
+                        Map<byte[], byte[]>
+                        frequencies = wordResult.getFamilyMap("frequency".getBytes());
+                        if (prevOptimization) {
+                            for (byte[]
+                                 key : frequencies.keySet()) {
+                                String
+                                keyString = Bytes.toString(key);
+                                if (documentsFilter.get(keyString) != null) {
+                                    documentsFilter.put(keyString, documentsFilter.get(keyString) + 1);
+                                }
+                            }
+                        }
+                        else {
+                            for (byte[]
+                                 key : frequencies.keySet()) {
+                                String
+                                keyString = Bytes.toString(key);
+                                int old;
+                                if (documentsFilter.get(keyString) == null) {
+                                    old = 0;
+                                } else {
+                                    old = documentsFilter.get(keyString);
+                                }
+                                documentsFilter.put(keyString, old + 1);
+                            }
+                        }
+                    }
+                    if (request.getParameter("words") != null) {
+                        for (String
+                             document : documentsFilter.keySet()) {
+                            if (documentsFilter.get(document) != request.getParameter("words")
+                                                                        .split(" ")
+                                                                        .length) {
+                                documentsFilter.remove(document);
+                            }
+                        }
+                    }
+                    for (String
+                         documentId : documentsFilter.keySet()) {
+                        JsonObject
+			document = new JsonObject();
+			document.addProperty("id",
+                                             documentId);
+                        documents.add(document);
+                    }
+                });
+            });
+            sendAsJson(response, (new Gson().toJson(documents)));
+            return;
         }
-	
         response.sendError(HttpServletResponse.SC_BAD_REQUEST);
         return;
     }
 
     @Override
-    protected void 
+    protected void
+
     doPost(HttpServletRequest
            request, 
            HttpServletResponse
