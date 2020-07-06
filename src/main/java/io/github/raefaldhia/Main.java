@@ -1,14 +1,9 @@
 package io.github.raefaldhia;
 
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.io.IOException;
 
 public class Main {
-    public static void
-    main (String[] args) {    
-        // Disable MongoDB logger
-        Logger
-            .getLogger("org.mongodb.driver")
-            .setLevel(Level.OFF);
+    public static void main(final String[] args) throws IOException {
+        return;
     }
 }

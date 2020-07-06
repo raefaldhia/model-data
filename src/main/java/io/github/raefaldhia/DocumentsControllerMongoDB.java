@@ -20,62 +20,54 @@ import com.google.gson.JsonParser;
 
 import io.github.raefaldhia.model.Document;
 import io.github.raefaldhia.model.Document.Word;
-import io.github.raefaldhia.repository.HBaseDocumentRepository;
+import io.github.raefaldhia.repository.MongoDBDocumentRepository;
 
 
-@WebServlet("/documents-hbase/*")
-public class DocumentsControllerHBase extends HttpServlet {
+@WebServlet("/documents-mongodb/*")
+public class DocumentsControllerMongoDB extends HttpServlet {
     private static final long
     serialVersionUID = 1L;
 
     private final Gson
     gson;
 
-    public DocumentsControllerHBase() {
+    public DocumentsControllerMongoDB() {
         this.gson = new Gson();
     }
 
     @Override
     protected void 
-    doDelete(final HttpServletRequest 
-             request,
-             final HttpServletResponse
-             response) throws ServletException,
-                              IOException {
-        HBaseDocumentRepository.delete(request.getParameter("id"));
+    doDelete(final HttpServletRequest request,
+             final HttpServletResponse response) throws ServletException, IOException {
+        MongoDBDocumentRepository.delete(request.getParameter("id"));
     }
 
     @Override
     protected void
-    doGet(final HttpServletRequest
-          request,
-          final HttpServletResponse
-          response) throws ServletException,
-                           IOException {
-        if (request.getPathInfo() == null ||
-            request.getPathInfo()
-                   .equals("/")) {
+    doGet(final HttpServletRequest request,
+          final HttpServletResponse response) throws ServletException, IOException {
+        if (request.getPathInfo() == null || request.getPathInfo().equals("/")) {
             final JsonArray
             documents = new JsonArray();
 
-            HBaseDocumentRepository.filter(Optional.ofNullable(request.getParameter("author"))
-                                              .orElse(null),
-                                      Optional.ofNullable(request.getParameter("name"))
-                                              .orElse(null),
-                                      Optional.ofNullable(request.getParameter("year"))
-                                              .map(value -> Year.of(Integer.parseInt(value)))
-                                              .orElse(null),
-                                      Optional.ofNullable(request.getParameter("words"))
-                                              .map(value -> Arrays.asList(value.split(" ")))
-                                              .orElse(null))
-                              .forEach(document -> { 
-                                  JsonObject
-                                  obj = this.gson.toJsonTree(document).getAsJsonObject();
-                                  obj.addProperty("id", document.getId().toString());
-                                  obj.addProperty("year", document.getYear().getValue());
+            MongoDBDocumentRepository.filter(Optional.ofNullable(request.getParameter("author"))
+                                                     .orElse(null),
+                                             Optional.ofNullable(request.getParameter("name"))
+                                                     .orElse(null),
+                                             Optional.ofNullable(request.getParameter("year"))
+                                                     .map(value -> Year.of(Integer.parseInt(value)))
+                                                     .orElse(null),
+                                             Optional.ofNullable(request.getParameter("words"))
+                                                     .map(value -> Arrays.asList(value.split(" ")))
+                                                     .orElse(null))
+                                     .forEach(document -> { 
+                                         JsonObject
+                                         obj = this.gson.toJsonTree(document).getAsJsonObject();
+                                         obj.addProperty("id", document.getId().toString());               
+                                         obj.addProperty("year", document.getYear().getValue());
 
-                                  documents.add(obj);
-                              });
+                                         documents.add(obj);
+                                     });
 
             sendJson(response, documents);
 
@@ -89,16 +81,9 @@ public class DocumentsControllerHBase extends HttpServlet {
 
     @Override
     protected void
-    doPost(final HttpServletRequest
-           request,
-           final HttpServletResponse
-           response) throws ServletException,
-                            IOException {
-        if ((request.getPathInfo() == null ||
-             request.getPathInfo()
-                    .equals("/")) &&
-            request.getContentType()
-                   .equals("application/json")) {
+    doPost(final HttpServletRequest request, 
+           final HttpServletResponse response) throws ServletException, IOException {
+        if ((request.getPathInfo() == null || request.getPathInfo().equals("/")) && request.getContentType().equals("application/json")) {
             final JsonElement
             body = parseJson(request);
 
@@ -136,7 +121,7 @@ public class DocumentsControllerHBase extends HttpServlet {
                             .add(word);
                 });
 
-            HBaseDocumentRepository.save(document);
+            MongoDBDocumentRepository.save(document);
 
             return;
         }
@@ -147,8 +132,7 @@ public class DocumentsControllerHBase extends HttpServlet {
     }
 
     private JsonElement 
-    parseJson(final HttpServletRequest 
-              request) throws IOException {
+    parseJson(final HttpServletRequest request) throws IOException {
         final StringBuilder
         buffer = new StringBuilder();
 
@@ -163,10 +147,8 @@ public class DocumentsControllerHBase extends HttpServlet {
     }
 
     private void
-    sendJson(final HttpServletResponse
-             response,
-             final JsonElement
-             json) throws IOException {
+    sendJson(final HttpServletResponse response,
+             final JsonElement json) throws IOException {
         response.setContentType("application/json");
         
         final PrintWriter
