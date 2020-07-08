@@ -96,6 +96,11 @@ public class Document {
         Word() {
 
         }
+        
+        public Word(String name, int freq){
+            this.name = name;
+            this.frequency = freq;
+        }
 
         public String
         getName() {
