@@ -1,6 +1,5 @@
 package io.github.raefaldhia.repository;
 
-import java.io.IOException;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,7 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import com.mongodb.MongoClientSettings;
@@ -21,6 +19,7 @@ import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Indexes;
 
 import org.bson.codecs.configuration.CodecRegistries;
 import org.bson.codecs.configuration.CodecRegistry;
@@ -29,7 +28,7 @@ import org.bson.types.ObjectId;
 
 import io.github.raefaldhia.model.Document;
 
-public class MongoDBDocumentRepository {
+public class MongoDBDocumentRepository implements IRepository {
     private static final CodecRegistry
     codecRegistry = CodecRegistries.fromRegistries(MongoClientSettings.getDefaultCodecRegistry(),
                                                    CodecRegistries.fromProviders(PojoCodecProvider.builder()
@@ -54,8 +53,16 @@ public class MongoDBDocumentRepository {
     private static final MongoDatabase
     database = client.getDatabase("database");
 
-    public static void
-    delete (final Document document) throws IOException {
+    public
+    MongoDBDocumentRepository() {
+        database.getCollection("documents_index").createIndex(Indexes.ascending("author", "documentId"));
+        database.getCollection("documents_index").createIndex(Indexes.ascending("name", "documentId"));
+        database.getCollection("documents_index").createIndex(Indexes.ascending("year", "documentId"));
+        database.getCollection("documents_index").createIndex(Indexes.ascending("word", "documentId"));
+    }
+
+    public void
+    delete (final Document document) {
         if (document == null) {
             return;
         }
@@ -67,8 +74,7 @@ public class MongoDBDocumentRepository {
                 .deleteMany(Filters.and(Filters.eq("documentId", document.getId()),
                                         Filters.or(Filters.eq("author", document.getAuthor()),
                                                    Filters.eq("name", document.getName()),
-                                                   Filters.eq("year", document.getYear()
-                                                                              .getValue()))));
+                                                   Filters.eq("year", document.getYear()))));
 
         document.getWords()
                 .forEach(word -> {
@@ -78,45 +84,44 @@ public class MongoDBDocumentRepository {
                 });
     }
 
-    public static void
-    delete (final String id) throws IOException {
+    public void
+    delete (final String id) {
         if (id == null) {
             return;
         }
 
-        MongoDBDocumentRepository.delete(MongoDBDocumentRepository.get(id));
+        this.delete(this.get(id));
     }
 
-    public static List<Document>
+    public List<Document>
     filter (final String author,
             final String name,
-            final Year year,
-            final List<String> words) throws IOException {
+            final Integer year,
+            final List<String> words) {
         return Optional.ofNullable(Arrays.asList(Optional.ofNullable(author)
-                                                         .map(ThrowingFunction.unchecked(author0 -> MongoDBDocumentRepository.getIdsByAuthor(author)))
+                                                         .map(author0 -> this.getIdsByAuthor(author))
                                                          .orElse(null),
                                                  Optional.ofNullable(name)
-                                                         .map(ThrowingFunction.unchecked(name0 -> MongoDBDocumentRepository.getIdsByName(name0)))
+                                                         .map(name0 -> this.getIdsByName(name0))
                                                          .orElse(null),
                                                  Optional.ofNullable(year)
-                                                         .map(ThrowingFunction.unchecked(year0 -> MongoDBDocumentRepository.getIdsByYear(year0.getValue())))
+                                                         .map(year0 -> this.getIdsByYear(year0))
                                                          .orElse(null),
                                                  Optional.ofNullable(words)
-                                                         .map(ThrowingFunction.unchecked(words0 -> MongoDBDocumentRepository.getIdsByWords(words0)))
+                                                         .map(words0 -> this.getIdsByWords(words0))
                                                          .orElse(null))
-                       .stream()
-                       .filter(set0 -> set0 != null)
-                       .reduce((Set<String>) null, (set0, set1) -> MongoDBDocumentRepository.joinIndex(set0, set1)))
+                                         .stream()
+                                         .filter(set0 -> set0 != null)
+                                         .reduce((Set<String>) null, (set0, set1) -> this.joinIndex(set0, set1)))
                        .orElse(new HashSet<String>())
                        .stream()
-                       .map(ThrowingFunction.unchecked(id0-> get(id0)))
+                       .map(id0-> get(id0))
                        .filter(arg0 -> arg0 != null)
                        .collect(Collectors.toList());
     }
 
-    public static Document
-    get (final String id) throws IOException {
-        System.out.println(id);
+    public Document
+    get (final String id) {
         if (id == null) {
             return null;
         }
@@ -126,63 +131,64 @@ public class MongoDBDocumentRepository {
                        .first();
     }
 
-    private static Set<String>
-    getIdsByAuthor (final String author) throws IOException {
+    public Set<String>
+    getIdsByAuthor (final String author) {
         return Optional.ofNullable(database.getCollection("documents_index")
                                            .aggregate(Arrays.asList(Aggregates.match(Filters.eq("author", author)),
                                                                     Aggregates.group(null, Arrays.asList(Accumulators.addToSet("documents", "$documentId")))))
-                                           .first()
-                                           .get("documents", new ArrayList<ObjectId>()))
-                       .map(documents -> documents.stream()
+                                           .first())
+                       .map(documents -> documents.get("documents", new ArrayList<ObjectId>())
+                                                  .stream()
                                                   .map(objectId -> objectId.toString())
                                                   .collect(Collectors.toSet()))
-                       .orElse(null);
+                       .orElse(new HashSet<String>());
     }
 
-    private static Set<String>
-    getIdsByName (final String name) throws IOException {
+    private Set<String>
+    getIdsByName (final String name) {
         return Optional.ofNullable(database.getCollection("documents_index")
                                            .aggregate(Arrays.asList(Aggregates.match(Filters.eq("name", name)),
                                                                     Aggregates.group(null, Arrays.asList(Accumulators.addToSet("documents", "$documentId")))))
-                                           .first()
-                                           .get("documents", new ArrayList<ObjectId>()))
-                       .map(documents -> documents.stream()
+                                           .first())
+                       .map(documents -> documents.get("documents", new ArrayList<ObjectId>())
+                                                  .stream()
                                                   .map(objectId -> objectId.toString())
                                                   .collect(Collectors.toSet()))
-                       .orElse(null);
+                       .orElse(new HashSet<String>());
     }
 
-    private static Set<String>
-    getIdsByYear (final int year) throws IOException {
+    public Set<String>
+    getIdsByYear (final int year) {
         return Optional.ofNullable(database.getCollection("documents_index")
                                            .aggregate(Arrays.asList(Aggregates.match(Filters.eq("year", year)),
                                                                     Aggregates.group(null, Arrays.asList(Accumulators.addToSet("documents", "$documentId")))))
-                                           .first()
-                                           .get("documents", new ArrayList<ObjectId>()))
-                       .map(documents -> documents.stream()
+                                           .first())
+                       .map(documents -> documents.get("documents", new ArrayList<ObjectId>())
+                                                  .stream()
                                                   .map(objectId -> objectId.toString())
                                                   .collect(Collectors.toSet()))
-                       .orElse(null);
+                       .orElse(new HashSet<String>());
     }
 
-    private static Set<String>
-    getIdsByWords (final List<String> wordsQuery) throws IOException {
-        return database.getCollection("documents_index")
-                       .aggregate(Arrays.asList(Aggregates.match(Filters.in("word", wordsQuery)),
-                                                Aggregates.group("$word", Arrays.asList(Accumulators.addToSet("documents", "$documentId"))),
-                                                Aggregates.group(null, Arrays.asList(Accumulators.addToSet("documents", "$documents")))))
-                       .first()
-                       .get("documents", new ArrayList<List<ObjectId>>())
-                       .stream()
-                       .map(list -> list.stream()
-                                        .map(objectId -> objectId.toString())
-                                        .collect(Collectors.toSet()))
-                       .reduce((set0, set1) -> joinIndex(set0, set1))
-                       .orElse(null);        
+    public Set<String>
+    getIdsByWords (final List<String> wordsQuery) {
+        return Optional.ofNullable(database.getCollection("documents_index")
+                                           .aggregate(Arrays.asList(Aggregates.match(Filters.in("word", wordsQuery)),
+                                                                    Aggregates.group("$word", Arrays.asList(Accumulators.addToSet("documents", "$documentId"))),
+                                                                    Aggregates.group(null, Arrays.asList(Accumulators.addToSet("documents", "$documents")))))
+                                           .first())
+                       .map(documents -> documents.get("documents", new ArrayList<List<ObjectId>>())
+                                                  .stream()
+                                                  .map(list -> list.stream()
+                                                                   .map(objectId -> objectId.toString())
+                                                                   .collect(Collectors.toSet()))
+                                                  .reduce((set0, set1) -> joinIndex(set0, set1))
+                                                  .orElse(new HashSet<String>()))
+                       .orElse(new HashSet<String>());
     }
 
-    public static void
-    save (final Document document) throws IOException {
+    public void
+    save (final Document document) {
         if (document.getId() == null) {
             document.setId(new ObjectId());
         }
@@ -203,8 +209,7 @@ public class MongoDBDocumentRepository {
 
         indexCollection.insertOne(new org.bson.Document()
                                               .append("documentId", document.getId())
-                                              .append("year", document.getYear()
-                                                                      .getValue()));
+                                              .append("year", document.getYear()));
 
         document.getWords()
                 .forEach(word -> {
@@ -214,7 +219,7 @@ public class MongoDBDocumentRepository {
                 });
     }
 
-    private static Set<String>
+    private Set<String>
     joinIndex (final Set<String> set0,
                final Set<String> set1) {
         return Optional.ofNullable(set0)
@@ -224,22 +229,5 @@ public class MongoDBDocumentRepository {
                            return set0NotNull;
                        })
                        .orElse(set1);
-    }
-
-    @FunctionalInterface
-    public interface ThrowingFunction<T, R, E extends Throwable> {
-        R apply(T t) throws E;
-
-        static <T, R, E extends Throwable> Function<T, R> 
-        unchecked(ThrowingFunction<T, R, E> 
-                  f) {
-            return t -> {
-                try {
-                    return f.apply(t);
-                } catch (Throwable e) {
-                    throw new RuntimeException(e);
-                }
-            };
-        }
     }
 }

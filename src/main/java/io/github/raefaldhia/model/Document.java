@@ -18,7 +18,7 @@ public class Document {
     private String
     name;
 
-    private Year
+    private int
     year;
 
     private List<Word>
@@ -65,13 +65,13 @@ public class Document {
         this.name = name;
     }
 
-    public Year
+    public int
     getYear() {
         return year;
     }
 
     public void
-    setYear(final Year year) {
+    setYear(final int year) {
         this.year = year;
     }
 
@@ -93,8 +93,13 @@ public class Document {
         frequency;
 
         public
-        Word() {
+        Word() { }
 
+        public
+        Word(final String name,
+             final int frequency) {
+            this.name = name;
+            this.frequency = frequency;
         }
 
         public String
